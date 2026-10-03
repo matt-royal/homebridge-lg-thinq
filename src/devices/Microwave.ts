@@ -122,8 +122,13 @@ export default class Microwave extends BaseDevice {
     this.serviceHood.getCharacteristic(Characteristic.Active)
       .onGet(this.onlineGet(() => hasNonZeroSnapshotNumber(this.Status.data, 'mwoVentSpeedLevel') ? 1 : 0))
       .onSet((value) => {
-        this.ventSpeed = value as number;
-        if (this.ventSpeed !== snapshotNumber(this.Status.data, 'mwoVentSpeedLevel')) {
+        this.platform.log.debug('onSet Active: ' + value);
+        // HomeKit normally pairs Active with a RotationSpeed write for a
+        // fan-speed gesture; that write carries the real target. Active's
+        // own value is just 0|1, so only act on it when turning the fan
+        // off -- inferring a speed from "on" would send a wrong level.
+        if (!value) {
+          this.ventSpeed = 0;
           this.sendLightVentCommand();
         }
       });
@@ -131,6 +136,7 @@ export default class Microwave extends BaseDevice {
       this.ventSpeed = snapshotNumber(this.Status.data, 'mwoVentSpeedLevel');
       return this.ventSpeed;
     })).onSet((value) => {
+      this.platform.log.debug('onSet RotationSpeed: ' + value);
       this.ventSpeed = value as number;
       this.sendLightVentCommand();
     });
