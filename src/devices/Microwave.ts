@@ -58,6 +58,8 @@ export default class Microwave extends BaseDevice {
   protected localHumidity = 50;
   protected defaultTemp = 0;
   protected waitingForCommand = false;
+  protected waitingForVentLampCommand = false;
+  protected ventLampCommandTimer: ReturnType<typeof setTimeout> | null = null;
   protected ovenCommandList = {
     ovenMode: 'WARM',
     ovenSetTemperature: 0,
@@ -946,15 +948,49 @@ export default class Microwave extends BaseDevice {
     }, 'Set', ctrlKey);
   }
 
+  /**
+   * HomeKit writes the Fanv2 `Active` and `RotationSpeed` characteristics as
+   * separate onSet calls for a single user gesture. Since the vent and lamp
+   * share one combined device command (setVentLampLevel), firing a request
+   * per onSet sends two near-simultaneous commands for the same device; LG's
+   * API accepts only one of the two and rejects the other (HTTP 400,
+   * resultCode 0103), so the applied result is effectively a race. Debounce
+   * so both writes settle into this.ventSpeed/this.lampLevel before a single
+   * request goes out.
+   */
   async sendLightVentCommand() {
     if (!this.isOnlineForHomeKit) {
       return;
     }
 
+    if (this.ventLampCommandTimer) {
+      clearTimeout(this.ventLampCommandTimer);
+    }
+    this.ventLampCommandTimer = setTimeout(() => {
+      this.ventLampCommandTimer = null;
+      this.dispatchLightVentCommand();
+    }, 250);
+  }
+
+  protected async dispatchLightVentCommand() {
+    if (this.waitingForVentLampCommand) {
+      // A previous dispatch is still in flight; retry once it clears instead
+      // of sending a second, overlapping request.
+      setTimeout(() => this.sendLightVentCommand(), 250);
+      return;
+    }
+
+    this.waitingForVentLampCommand = true;
     this.platform.log.debug('Fan Speed: ' + this.ventSpeed + ' Light: ' + this.lampLevel);
     const device = this.accessory.context.device;
     const ventLampCommand = microwaveVentLampCommand(this.ventSpeed, this.lampLevel);
-    await this.platform.ThinQ?.deviceControl(device, ventLampCommand.payload, ventLampCommand.command, ventLampCommand.ctrlKey);
+    try {
+      await this.platform.ThinQ?.deviceControl(device, ventLampCommand.payload, ventLampCommand.command, ventLampCommand.ctrlKey);
+    } finally {
+      setTimeout(() => {
+        this.waitingForVentLampCommand = false;
+      }, 1000);
+    }
   }
 
   async sendTimerCommand(time: number) {
