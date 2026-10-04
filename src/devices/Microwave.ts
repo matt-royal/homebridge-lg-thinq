@@ -217,7 +217,16 @@ export default class Microwave extends BaseDevice {
       });
 
     /////////////
-    this.ovenService = this.accessory.getService(this.config.name) ||
+    // getService(this.config.name) looks up by display name, which can
+    // legitimately differ from what was used to originally addService() this
+    // Television (e.g. a renamed config, or just never matching on a cold
+    // restart). When it doesn't match, addService() then collides with the
+    // same UUID+subtype already present on the cached accessory and throws
+    // "Cannot add a Service with the same UUID ... as another Service in
+    // this Accessory", which aborts the whole constructor. Look up by the
+    // service's actual identity (UUID + subtype) instead, which is stable
+    // regardless of display name.
+    this.ovenService = this.accessory.getServiceById(this.platform.Service.Television, 'NicoCataGaTa-OvenOven7') ||
       this.accessory.addService(this.platform.Service.Television, this.config.name, 'NicoCataGaTa-OvenOven7');
     this.ovenService.setCharacteristic(this.platform.Characteristic.ConfiguredName, 'LG Microwave Oven');
     this.ovenService.setPrimaryService(true);
