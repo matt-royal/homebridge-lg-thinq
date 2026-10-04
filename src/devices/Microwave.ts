@@ -1035,7 +1035,13 @@ export default class Microwave extends BaseDevice {
   protected exitVentLampCooldown() {
     this.ventLampTimer = null;
     if (this.ventLampDirty) {
-      this.enterVentLampPending();
+      // By now any burst of onSet calls that arrived while busy has already
+      // settled into this.ventSpeed/this.lampLevel (each one just updates
+      // the field directly), so there's nothing left to coalesce. Send the
+      // latest values immediately instead of re-arming the debounce used
+      // for a fresh Idle->Pending transition, which only exists to coalesce
+      // HomeKit's Active+RotationSpeed writes for a brand new gesture.
+      this.enterVentLampSending();
     } else {
       this.ventLampState = VentLampState.Idle;
     }
@@ -1765,31 +1771,33 @@ export default class Microwave extends BaseDevice {
         this.microwavePower.updateCharacteristic(this.platform.Characteristic.Brightness, microwavePowerLevel);
       }
 
-      const lampLevel = snapshotNumber(this.Status.data, 'mwoLampLevel');
-      const lampOn = lampLevel > 0;
-      if (this.serviceLight.getCharacteristic(this.platform.Characteristic.On).value !== lampOn) {
-        this.serviceLight.updateCharacteristic(this.platform.Characteristic.On, lampOn);
-      }
-
-      if (this.serviceLight.getCharacteristic(this.platform.Characteristic.Brightness).value !== lampLevel) {
-        this.serviceLight.updateCharacteristic(this.platform.Characteristic.Brightness, lampLevel);
-      }
-
-      const ventSpeedLevel = snapshotNumber(this.Status.data, 'mwoVentSpeedLevel');
-      const hoodActive = ventSpeedLevel > 0 ? 1 : 0;
-      if (this.serviceHood.getCharacteristic(this.platform.Characteristic.Active).value !== hoodActive) {
-        this.serviceHood.updateCharacteristic(this.platform.Characteristic.Active, hoodActive);
-      }
-
-      if (this.serviceHood.getCharacteristic(this.platform.Characteristic.RotationSpeed).value !== ventSpeedLevel) {
-        this.serviceHood.updateCharacteristic(this.platform.Characteristic.RotationSpeed, ventSpeedLevel);
-      }
-
-      // Keep the vent/lamp command mirror in sync with reality when nothing
-      // of ours is pending, so a field the user hasn't touched this session
-      // doesn't go stale. Never touches it outside Idle, so this can't
-      // clobber a pending or in-flight target the way onGet used to.
+      // Only touch vent/lamp characteristics (push to Home, and resync our
+      // own command mirror) while nothing of ours is pending or in flight.
+      // Otherwise a snapshot that hasn't caught up to our own just-sent
+      // change forces the display back to the stale pre-change value until
+      // a later snapshot corrects it, and the mirror sync could clobber a
+      // pending/in-flight target the way the old destructive onGet used to.
       if (this.ventLampState === VentLampState.Idle) {
+        const lampLevel = snapshotNumber(this.Status.data, 'mwoLampLevel');
+        const lampOn = lampLevel > 0;
+        if (this.serviceLight.getCharacteristic(this.platform.Characteristic.On).value !== lampOn) {
+          this.serviceLight.updateCharacteristic(this.platform.Characteristic.On, lampOn);
+        }
+
+        if (this.serviceLight.getCharacteristic(this.platform.Characteristic.Brightness).value !== lampLevel) {
+          this.serviceLight.updateCharacteristic(this.platform.Characteristic.Brightness, lampLevel);
+        }
+
+        const ventSpeedLevel = snapshotNumber(this.Status.data, 'mwoVentSpeedLevel');
+        const hoodActive = ventSpeedLevel > 0 ? 1 : 0;
+        if (this.serviceHood.getCharacteristic(this.platform.Characteristic.Active).value !== hoodActive) {
+          this.serviceHood.updateCharacteristic(this.platform.Characteristic.Active, hoodActive);
+        }
+
+        if (this.serviceHood.getCharacteristic(this.platform.Characteristic.RotationSpeed).value !== ventSpeedLevel) {
+          this.serviceHood.updateCharacteristic(this.platform.Characteristic.RotationSpeed, ventSpeedLevel);
+        }
+
         this.ventSpeed = ventSpeedLevel;
         this.lampLevel = lampLevel;
       }
