@@ -148,10 +148,12 @@ export default class Microwave extends BaseDevice {
           this.sendLightVentCommand();
         }
       });
-    this.serviceHood.getCharacteristic(Characteristic.RotationSpeed).onGet(this.onlineGet(() => {
-      this.ventSpeed = snapshotNumber(this.Status.data, 'mwoVentSpeedLevel');
-      return this.ventSpeed;
-    })).onSet((value) => {
+    this.serviceHood.getCharacteristic(Characteristic.RotationSpeed).onGet(this.onlineGet(() =>
+      // Report the live value without overwriting this.ventSpeed: a confirm
+      // read landing between a set and its (debounced) dispatch would
+      // otherwise clobber the pending target back to the device's old value.
+      snapshotNumber(this.Status.data, 'mwoVentSpeedLevel'),
+    )).onSet((value) => {
       this.platform.log.debug('onSet RotationSpeed: ' + value);
       this.ventSpeed = value as number;
       this.sendLightVentCommand();
@@ -177,10 +179,11 @@ export default class Microwave extends BaseDevice {
         this.sendLightVentCommand();
       }
     }).onGet(this.onlineGet(() => hasNonZeroSnapshotNumber(this.Status.data, 'mwoLampLevel')));
-    this.serviceLight.getCharacteristic(Characteristic.Brightness).onGet(this.onlineGet(() => {
-      this.lampLevel = snapshotNumber(this.Status.data, 'mwoLampLevel');
-      return this.lampLevel;
-    })).onSet((value) => {
+    this.serviceLight.getCharacteristic(Characteristic.Brightness).onGet(this.onlineGet(() =>
+      // See the RotationSpeed onGet above: don't overwrite this.lampLevel
+      // from a read, or a confirm read can clobber a pending target.
+      snapshotNumber(this.Status.data, 'mwoLampLevel'),
+    )).onSet((value) => {
       this.lampLevel = value as number;
       if (this.lampLevel !== snapshotNumber(this.Status.data, 'mwoLampLevel')) {
         this.sendLightVentCommand();
@@ -1780,6 +1783,15 @@ export default class Microwave extends BaseDevice {
 
       if (this.serviceHood.getCharacteristic(this.platform.Characteristic.RotationSpeed).value !== ventSpeedLevel) {
         this.serviceHood.updateCharacteristic(this.platform.Characteristic.RotationSpeed, ventSpeedLevel);
+      }
+
+      // Keep the vent/lamp command mirror in sync with reality when nothing
+      // of ours is pending, so a field the user hasn't touched this session
+      // doesn't go stale. Never touches it outside Idle, so this can't
+      // clobber a pending or in-flight target the way onGet used to.
+      if (this.ventLampState === VentLampState.Idle) {
+        this.ventSpeed = ventSpeedLevel;
+        this.lampLevel = lampLevel;
       }
 
 
