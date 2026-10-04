@@ -32,6 +32,19 @@ import {
   visibilityCharacteristicUpdate,
 } from './helpers.js';
 
+/**
+ * State machine for the combined vent+lamp command (see sendLightVentCommand
+ * below). Idle -> Pending debounces rapid onSet calls into one request;
+ * Sending -> Cooldown enforces a rest after each request and replays once
+ * via the dirty flag if another change arrived while busy.
+ */
+export enum VentLampState {
+  Idle = 'Idle',
+  Pending = 'Pending',
+  Sending = 'Sending',
+  Cooldown = 'Cooldown',
+}
+
 export default class Microwave extends BaseDevice {
   protected inputNameStatus = 'Microwave Status';
   protected inputNameMode = 'Microwave Mode';
@@ -58,8 +71,11 @@ export default class Microwave extends BaseDevice {
   protected localHumidity = 50;
   protected defaultTemp = 0;
   protected waitingForCommand = false;
-  protected waitingForVentLampCommand = false;
-  protected ventLampCommandTimer: ReturnType<typeof setTimeout> | null = null;
+  protected ventLampState: VentLampState = VentLampState.Idle;
+  protected ventLampTimer: ReturnType<typeof setTimeout> | null = null;
+  protected ventLampDirty = false;
+  protected static readonly VENT_LAMP_DEBOUNCE_MS = 250;
+  protected static readonly VENT_LAMP_COOLDOWN_MS = 1000;
   protected ovenCommandList = {
     ovenMode: 'WARM',
     ovenSetTemperature: 0,
@@ -960,42 +976,65 @@ export default class Microwave extends BaseDevice {
    * share one combined device command (setVentLampLevel), firing a request
    * per onSet sends two near-simultaneous commands for the same device; LG's
    * API accepts only one of the two and rejects the other (HTTP 400,
-   * resultCode 0103), so the applied result is effectively a race. Debounce
-   * so both writes settle into this.ventSpeed/this.lampLevel before a single
-   * request goes out.
+   * resultCode 0103), so the applied result is effectively a race.
+   *
+   * Routed through the VentLampState machine so at most one timer and one
+   * request are ever live: Idle/Pending collapse rapid onSet calls into a
+   * single debounced send; Sending/Cooldown mark any change that arrives
+   * while busy as dirty and replay it exactly once, instead of a retry loop
+   * that could re-arm its own timer and dispatch twice.
    */
   async sendLightVentCommand() {
     if (!this.isOnlineForHomeKit) {
       return;
     }
 
-    if (this.ventLampCommandTimer) {
-      clearTimeout(this.ventLampCommandTimer);
+    switch (this.ventLampState) {
+    case VentLampState.Idle:
+    case VentLampState.Pending:
+      this.enterVentLampPending();
+      break;
+    case VentLampState.Sending:
+    case VentLampState.Cooldown:
+      this.ventLampDirty = true;
+      break;
     }
-    this.ventLampCommandTimer = setTimeout(() => {
-      this.ventLampCommandTimer = null;
-      this.dispatchLightVentCommand();
-    }, 250);
   }
 
-  protected async dispatchLightVentCommand() {
-    if (this.waitingForVentLampCommand) {
-      // A previous dispatch is still in flight; retry once it clears instead
-      // of sending a second, overlapping request.
-      setTimeout(() => this.sendLightVentCommand(), 250);
-      return;
+  protected enterVentLampPending() {
+    this.ventLampState = VentLampState.Pending;
+    if (this.ventLampTimer) {
+      clearTimeout(this.ventLampTimer);
     }
+    this.ventLampTimer = setTimeout(() => this.enterVentLampSending(), Microwave.VENT_LAMP_DEBOUNCE_MS);
+  }
 
-    this.waitingForVentLampCommand = true;
+  protected async enterVentLampSending() {
+    this.ventLampState = VentLampState.Sending;
+    this.ventLampTimer = null;
+    this.ventLampDirty = false;
+
     this.platform.log.debug('Fan Speed: ' + this.ventSpeed + ' Light: ' + this.lampLevel);
     const device = this.accessory.context.device;
     const ventLampCommand = microwaveVentLampCommand(this.ventSpeed, this.lampLevel);
     try {
       await this.platform.ThinQ?.deviceControl(device, ventLampCommand.payload, ventLampCommand.command, ventLampCommand.ctrlKey);
     } finally {
-      setTimeout(() => {
-        this.waitingForVentLampCommand = false;
-      }, 1000);
+      this.enterVentLampCooldown();
+    }
+  }
+
+  protected enterVentLampCooldown() {
+    this.ventLampState = VentLampState.Cooldown;
+    this.ventLampTimer = setTimeout(() => this.exitVentLampCooldown(), Microwave.VENT_LAMP_COOLDOWN_MS);
+  }
+
+  protected exitVentLampCooldown() {
+    this.ventLampTimer = null;
+    if (this.ventLampDirty) {
+      this.enterVentLampPending();
+    } else {
+      this.ventLampState = VentLampState.Idle;
     }
   }
 
