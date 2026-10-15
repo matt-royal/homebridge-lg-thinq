@@ -240,6 +240,12 @@
           "air_fast_mode": {
             "title": "Air Fast Mode",
             "type": "boolean"
+          },
+          "oven_controls": {
+            "title": "Publish the oven controls",
+            "description": "Cooking modes, timers, temperature, power level and the Television that carries them. Turn off to keep only the fan and the light, which also stops the microwave showing up as an Apple TV in Home.",
+            "type": "boolean",
+            "default": true
           }
         }
       }
@@ -354,6 +360,19 @@
               ],
               "condition": {
                 "functionBody": "return model.devices && model.devices[arrayIndices] && ['REFRIGERATOR'].includes(model.devices[arrayIndices].type);"
+              }
+            },
+            {
+              "type": "fieldset",
+              "title": "Microwave specific settings",
+              "description": "Configure microwave device settings.",
+              "expandable": true,
+              "expanded": false,
+              "items": [
+                "devices[].oven_controls"
+              ],
+              "condition": {
+                "functionBody": "return model.devices && model.devices[arrayIndices] && ['MICROWAVE'].includes(model.devices[arrayIndices].type);"
               }
             },
             {

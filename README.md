@@ -90,6 +90,21 @@ To enable or configure only specific devices, list them by device id:
 
 Device type is detected from LG discovery data. Device-specific settings appear in the Homebridge UI after devices have been discovered.
 
+### Microwave: fan and light only
+
+By default the microwave publishes its oven controls as well as the fan and the light: a Television with input sources, cooking mode switches, timer valves, a thermostat and a power dimmer. Home shows that as an Apple TV and lists it in the iPhone remote. To keep only the fan and the light, set `oven_controls` to `false` on the microwave's entry in `devices`:
+
+```json
+"devices": [
+  {
+    "id": "device-id",
+    "oven_controls": false
+  }
+]
+```
+
+The oven services Homebridge already cached are removed at the next start. Setting it back to `true` (or removing it) publishes them again. Restart Homebridge after changing `config.json`.
+
 ## Supported Devices
 
 Support depends on the model data returned by LG. If a device appears in the LG ThinQ app but not in Homebridge, open an issue with the device type, model, country, and debug logs.
