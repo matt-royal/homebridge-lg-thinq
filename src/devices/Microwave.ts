@@ -93,34 +93,34 @@ export default class Microwave extends BaseDevice {
   /** Service */
   private serviceHood: Service;
   private serviceLight: Service;
-  private microwavePower: Service;
-  private ovenService: Service;
-  private ovenState: Service;
-  private lightVent: Service;
-  private ovenMode: Service;
-  private ovenTemp: Service;
-  private ovenOptions: Service;
-  private ovenStart: Service;
-  private ovenTimer: Service;
-  private ovenTime: Service;
-  private ovenEndTime: Service;
-  private ovenTimerService: Service;
-  private ovenAlarmService: Service;
-  private microwaveSwitch: Service;
-  private combiBakeSwitch: Service;
-  private dehydrateSwitch: Service;
-  private ovenSwitch: Service;
-  private convectionBakeSwitch: Service;
-  private convectionRoastSwitch: Service;
-  private frozenMealSwitch: Service;
-  private defrostSwitch: Service;
-  private airFrySwitch: Service;
-  private proofSwitch: Service;
-  private warmModeSwitch: Service;
-  private cancelSwitch: Service;
-  private startOvenSwitch: Service;
-  private ovenTempControl: Service;
-  private offSwitch: Service;
+  private microwavePower!: Service;
+  private ovenService!: Service;
+  private ovenState!: Service;
+  private lightVent!: Service;
+  private ovenMode!: Service;
+  private ovenTemp!: Service;
+  private ovenOptions!: Service;
+  private ovenStart!: Service;
+  private ovenTimer!: Service;
+  private ovenTime!: Service;
+  private ovenEndTime!: Service;
+  private ovenTimerService!: Service;
+  private ovenAlarmService!: Service;
+  private microwaveSwitch!: Service;
+  private combiBakeSwitch!: Service;
+  private dehydrateSwitch!: Service;
+  private ovenSwitch!: Service;
+  private convectionBakeSwitch!: Service;
+  private convectionRoastSwitch!: Service;
+  private frozenMealSwitch!: Service;
+  private defrostSwitch!: Service;
+  private airFrySwitch!: Service;
+  private proofSwitch!: Service;
+  private warmModeSwitch!: Service;
+  private cancelSwitch!: Service;
+  private startOvenSwitch!: Service;
+  private ovenTempControl!: Service;
+  private offSwitch!: Service;
 
   constructor(
     public readonly platform: LGThinQHomebridgePlatform,
@@ -195,6 +195,46 @@ export default class Microwave extends BaseDevice {
         maxValue: 2,
         minStep: 1,
       });
+
+    if (!this.ovenControlsEnabled) {
+      this.removeOvenControlServices();
+      return;
+    }
+    this.setupOvenControls();
+  }
+
+  /**
+   * Drops every service an earlier run published except the fan and the light.
+   * Homebridge restores the whole accessory from its cache, so leaving the oven
+   * services out of the constructor is not enough: the cached ones would keep
+   * appearing in Home. The cache is saved again so the removal survives a
+   * restart; nothing is written when there was nothing to remove.
+   */
+  private removeOvenControlServices() {
+    const keep = new Set<Service | undefined>([
+      this.accessory.getService(this.platform.Service.AccessoryInformation),
+      this.serviceHood,
+      this.serviceLight,
+    ]);
+    const stale = this.accessory.services.filter(service => !keep.has(service));
+    if (stale.length === 0) {
+      return;
+    }
+
+    stale.forEach(service => this.accessory.removeService(service));
+    this.platform.log.info('[' + this.accessory.context.device.name + '] oven_controls is off: removed '
+      + stale.length + ' oven services, keeping the fan and the light.');
+    this.platform.api.updatePlatformAccessories([this.accessory]);
+  }
+
+  /**
+   * Everything on the microwave besides the fan and the light: the Television
+   * and its input sources, the cooking mode switches, the timer valves, the
+   * thermostat and the power dimmer. Skipped when `oven_controls` is false.
+   */
+  private setupOvenControls() {
+    const { accessory } = this;
+    const { Characteristic } = this.platform;
 
     this.offSwitch = accessory.getService('Turn Off Microwave') ||
       accessory.addService(this.platform.Service.Switch, 'Turn Off Microwave', 'CataNicoGaTa-Control8Off');
@@ -1620,8 +1660,49 @@ export default class Microwave extends BaseDevice {
   }
 
   //////////////
+  /**
+   * Shows the device's lamp and vent state on the light and the fan. Shared by
+   * both modes: this is all there is to update when `oven_controls` is false.
+   */
+  private updateVentAndLamp() {
+    // Only touch vent/lamp characteristics (push to Home, and resync our
+    // own command mirror) while nothing of ours is pending or in flight.
+    // Otherwise a snapshot that hasn't caught up to our own just-sent
+    // change forces the display back to the stale pre-change value until
+    // a later snapshot corrects it, and the mirror sync could clobber a
+    // pending/in-flight target the way the old destructive onGet used to.
+    if (this.ventLampState === VentLampState.Idle) {
+      const lampLevel = snapshotNumber(this.Status.data, 'mwoLampLevel');
+      const lampOn = lampLevel > 0;
+      if (this.serviceLight.getCharacteristic(this.platform.Characteristic.On).value !== lampOn) {
+        this.serviceLight.updateCharacteristic(this.platform.Characteristic.On, lampOn);
+      }
+
+      if (this.serviceLight.getCharacteristic(this.platform.Characteristic.Brightness).value !== lampLevel) {
+        this.serviceLight.updateCharacteristic(this.platform.Characteristic.Brightness, lampLevel);
+      }
+
+      const ventSpeedLevel = snapshotNumber(this.Status.data, 'mwoVentSpeedLevel');
+      const hoodActive = ventSpeedLevel > 0 ? 1 : 0;
+      if (this.serviceHood.getCharacteristic(this.platform.Characteristic.Active).value !== hoodActive) {
+        this.serviceHood.updateCharacteristic(this.platform.Characteristic.Active, hoodActive);
+      }
+
+      if (this.serviceHood.getCharacteristic(this.platform.Characteristic.RotationSpeed).value !== ventSpeedLevel) {
+        this.serviceHood.updateCharacteristic(this.platform.Characteristic.RotationSpeed, ventSpeedLevel);
+      }
+
+      this.ventSpeed = ventSpeedLevel;
+      this.lampLevel = lampLevel;
+    }
+  }
+
   updateAccessoryCharacteristic(device: Device) {
     super.updateAccessoryCharacteristic(device);
+    if (!this.ovenControlsEnabled) {
+      this.updateVentAndLamp();
+      return;
+    }
     //this.platform.log('Device Response', device)
     //const ovenState = device.snapshot.ovenState;
     //const isVentOn = ovenState['ventSet'] === device.deviceModel.lookupMonitorName('VentSet', '@CP_ENABLE_W');
@@ -1780,36 +1861,7 @@ export default class Microwave extends BaseDevice {
         this.microwavePower.updateCharacteristic(this.platform.Characteristic.Brightness, microwavePowerLevel);
       }
 
-      // Only touch vent/lamp characteristics (push to Home, and resync our
-      // own command mirror) while nothing of ours is pending or in flight.
-      // Otherwise a snapshot that hasn't caught up to our own just-sent
-      // change forces the display back to the stale pre-change value until
-      // a later snapshot corrects it, and the mirror sync could clobber a
-      // pending/in-flight target the way the old destructive onGet used to.
-      if (this.ventLampState === VentLampState.Idle) {
-        const lampLevel = snapshotNumber(this.Status.data, 'mwoLampLevel');
-        const lampOn = lampLevel > 0;
-        if (this.serviceLight.getCharacteristic(this.platform.Characteristic.On).value !== lampOn) {
-          this.serviceLight.updateCharacteristic(this.platform.Characteristic.On, lampOn);
-        }
-
-        if (this.serviceLight.getCharacteristic(this.platform.Characteristic.Brightness).value !== lampLevel) {
-          this.serviceLight.updateCharacteristic(this.platform.Characteristic.Brightness, lampLevel);
-        }
-
-        const ventSpeedLevel = snapshotNumber(this.Status.data, 'mwoVentSpeedLevel');
-        const hoodActive = ventSpeedLevel > 0 ? 1 : 0;
-        if (this.serviceHood.getCharacteristic(this.platform.Characteristic.Active).value !== hoodActive) {
-          this.serviceHood.updateCharacteristic(this.platform.Characteristic.Active, hoodActive);
-        }
-
-        if (this.serviceHood.getCharacteristic(this.platform.Characteristic.RotationSpeed).value !== ventSpeedLevel) {
-          this.serviceHood.updateCharacteristic(this.platform.Characteristic.RotationSpeed, ventSpeedLevel);
-        }
-
-        this.ventSpeed = ventSpeedLevel;
-        this.lampLevel = lampLevel;
-      }
+      this.updateVentAndLamp();
 
 
 
@@ -1859,7 +1911,17 @@ export default class Microwave extends BaseDevice {
   public get config() {
     return Object.assign({}, {
       oven_trigger: false,
+      oven_controls: true,
     }, super.config);
+  }
+
+  /**
+   * Whether to publish the oven itself (cooking modes, timers, temperature,
+   * the Television that carries them) next to the fan and the light. On by
+   * default; `oven_controls: false` keeps only the fan and the light.
+   */
+  private get ovenControlsEnabled(): boolean {
+    return this.config.oven_controls !== false;
   }
 
 }
