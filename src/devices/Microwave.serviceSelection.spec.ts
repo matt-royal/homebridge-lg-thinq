@@ -4,7 +4,7 @@ import Microwave, { MICROWAVE_SERVICES } from './Microwave.js';
 import { AccessoryContext } from '../baseDevice.js';
 import { LGThinQHomebridgePlatform } from '../platform.js';
 import { Device, DeviceData } from '../lib/Device.js';
-import { CHARACTERISTIC, createFakeAccessory, SERVICE } from './testSupport/fakeHap.js';
+import { CHARACTERISTIC, createFakeAccessory, FakeService, SERVICE } from './testSupport/fakeHap.js';
 
 /**
  * The microwave publishes thirty-one services: a fan, a light, a power dimmer,
@@ -252,5 +252,36 @@ describe('Microwave service selection', () => {
     expect(light.getCharacteristic(CHARACTERISTIC.Brightness).value).toBe(2);
     expect(hood.getCharacteristic(CHARACTERISTIC.Active).value).toBe(1);
     expect(hood.getCharacteristic(CHARACTERISTIC.RotationSpeed).value).toBe(3);
+  });
+
+  // An idle microwave reports 0 and 10 for the thermostat's temperatures, both
+  // outside its ranges; HAP logs an error for each when they are pushed in.
+  // That is what showed in the log when a hidden thermostat was updated.
+  describe('the oven thermostat', () => {
+    function thermostatUpdates(deviceConfig: Record<string, unknown> | null) {
+      const updateCharacteristic = jest.spyOn(FakeService.prototype, 'updateCharacteristic');
+      const microwave = build(deviceConfig);
+      const index = fake.addService.mock.calls.findIndex(call => call[0] === SERVICE.Thermostat);
+      const thermostat = fake.addService.mock.results[index].value as FakeService;
+      updateCharacteristic.mockClear();
+
+      microwave.updateAccessoryCharacteristic(microwaveDevice());
+
+      const updated = updateCharacteristic.mock.contexts.filter(context => context === thermostat).length;
+      updateCharacteristic.mockRestore();
+      return updated;
+    }
+
+    it('is not updated when it is not published', () => {
+      expect(thermostatUpdates({ microwave_services: ['fan', 'light'] })).toBe(0);
+    });
+
+    it('is still updated when it is chosen', () => {
+      expect(thermostatUpdates({ microwave_services: ['fan', 'light', 'temperature_control'] })).toBeGreaterThan(0);
+    });
+
+    it('is still updated when nothing is hidden', () => {
+      expect(thermostatUpdates(null)).toBeGreaterThan(0);
+    });
   });
 });
