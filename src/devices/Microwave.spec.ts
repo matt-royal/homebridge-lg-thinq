@@ -87,12 +87,14 @@ describe('Microwave vent/lamp command', () => {
     };
     const device = new Device(deviceData);
 
-    const { getService, getServiceById, addService, services } = createFakeAccessory();
+    const { getService, getServiceById, addService, removeService, services, serviceList } = createFakeAccessory();
     accessory = {
       context: { device },
+      services: serviceList,
       getService,
       getServiceById,
       addService,
+      removeService,
     } as unknown as PlatformAccessory<AccessoryContext>;
 
     platform = {
