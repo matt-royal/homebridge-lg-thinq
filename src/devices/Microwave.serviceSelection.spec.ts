@@ -229,6 +229,19 @@ describe('Microwave service selection', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
+  // Real HAP logs an error for each of these at every start when a thermostat
+  // built just now keeps its default of 0 under the new ranges.
+  it('starts the thermostat inside the temperature ranges it sets', () => {
+    const thermostat = fake.addService(SERVICE.Thermostat, 'Microwave Oven Temperature Control', 'NicoCataGaTa-OvenTC');
+    thermostat.getCharacteristic(CHARACTERISTIC.CurrentTemperature).value = 0;
+    thermostat.getCharacteristic(CHARACTERISTIC.TargetTemperature).value = 10;
+
+    build({ microwave_services: ['fan', 'light'] });
+
+    expect(thermostat.getCharacteristic(CHARACTERISTIC.CurrentTemperature).value).toBe(10);
+    expect(thermostat.getCharacteristic(CHARACTERISTIC.TargetTemperature).value).toBe(38);
+  });
+
   it('still drives the fan when the other services are hidden', async () => {
     build({ microwave_services: ['fan', 'light'] });
     const hood = fake.services.get('Microwave Fan')!;

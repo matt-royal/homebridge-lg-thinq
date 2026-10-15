@@ -28,6 +28,7 @@ import {
 import {
   snapshotNumber,
   snapshotString,
+  startAtLeast,
   updateCharacteristicIfChanged,
   visibilityCharacteristicUpdate,
 } from './helpers.js';
@@ -964,6 +965,11 @@ export default class Microwave extends BaseDevice {
           this.pauseUpdate = true;
         }
       });
+    // A thermostat built just now starts both temperatures below the ranges set
+    // here, and HAP logs an error for each at every start (the service is
+    // rebuilt each time when it is hidden with microwave_services).
+    startAtLeast(this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentTemperature), 10);
+    startAtLeast(this.ovenTempControl.getCharacteristic(this.platform.Characteristic.TargetTemperature), 38);
     this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
       .setProps({
         minValue: 10,
