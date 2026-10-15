@@ -95,11 +95,19 @@ export function createFakeAccessory() {
   }
 
   const getService = jest.fn((nameOrType: unknown) => services.get(keyFor(nameOrType)));
-  const addService = jest.fn((type: unknown, name?: unknown) => {
+  // Real HAP looks a service up by type AND subtype. The fake keys services by
+  // the name they were added under, so this ignores the type and matches on the
+  // subtype recorded at addService() time.
+  const subtypes = new Map<string, FakeService>();
+  const getServiceById = jest.fn((_type: unknown, subtype: string) => subtypes.get(subtype));
+  const addService = jest.fn((type: unknown, name?: unknown, subtype?: string) => {
     const service = new FakeService();
     services.set(keyFor(type, name), service);
+    if (subtype) {
+      subtypes.set(subtype, service);
+    }
     return service;
   });
 
-  return { getService, addService, services };
+  return { getService, getServiceById, addService, services };
 }
