@@ -1,6 +1,7 @@
 import { describe, expect, it, jest, beforeEach } from '@jest/globals';
 import { Logger, PlatformAccessory } from 'homebridge';
-import Microwave, { MICROWAVE_SERVICES } from './Microwave.js';
+import Microwave from './Microwave.js';
+import { MICROWAVE_SERVICES } from './microwaveServices.js';
 import { AccessoryContext } from '../baseDevice.js';
 import { LGThinQHomebridgePlatform } from '../platform.js';
 import { Device, DeviceData } from '../lib/Device.js';
