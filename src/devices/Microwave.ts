@@ -28,6 +28,7 @@ import {
 import {
   snapshotNumber,
   snapshotString,
+  startAtLeast,
   updateCharacteristicIfChanged,
   visibilityCharacteristicUpdate,
 } from './helpers.js';
@@ -964,6 +965,11 @@ export default class Microwave extends BaseDevice {
           this.pauseUpdate = true;
         }
       });
+    // A thermostat built just now starts both temperatures below the ranges set
+    // here, and HAP logs an error for each at every start (the service is
+    // rebuilt each time when it is hidden with microwave_services).
+    startAtLeast(this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentTemperature), 10);
+    startAtLeast(this.ovenTempControl.getCharacteristic(this.platform.Characteristic.TargetTemperature), 38);
     this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
       .setProps({
         minValue: 10,
@@ -990,11 +996,6 @@ export default class Microwave extends BaseDevice {
       });
 
     this.applyServiceSelection(servicesBeforeSetup);
-  }
-
-  /** Whether Home can see this service, as opposed to one built and then hidden. */
-  private isPublished(service: Service): boolean {
-    return this.accessory.services.includes(service);
   }
 
   /**
@@ -1840,29 +1841,24 @@ export default class Microwave extends BaseDevice {
       updateVisibility(this.ovenTimer, this.showTimer);
 
       /////////Temperature Monitor
-      // An idle microwave reports a temperature of 0 and a target of 10, both
-      // outside the thermostat's ranges. HAP rejects them with an error in the
-      // log, so a thermostat that is not published is left alone.
-      if (this.isPublished(this.ovenTempControl)) {
-        const tempDisplayUnits = temperatureDisplayUnitsValue(this.Status.data, 'LWOTargetTemperatureUnit');
-        if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits).value !== tempDisplayUnits) {
-          this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits, tempDisplayUnits);
-        }
-        if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentTemperature).value !== this.ovenCurrentTemperature()) {
-          this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.CurrentTemperature, this.ovenCurrentTemperature());
-        }
-        if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.TargetTemperature).value !== this.ovenTargetTemperature()) {
-          this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.TargetTemperature, this.ovenTargetTemperature());
-        }
-        if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState).value !== this.targetHeatingState()) {
-          this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState, this.targetHeatingState());
-        }
-        if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState).value !== this.currentHeatingState()) {
-          this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState, this.currentHeatingState());
-        }
-        if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity).value !== this.localHumidity) {
-          this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity, this.localHumidity);
-        }
+      const tempDisplayUnits = temperatureDisplayUnitsValue(this.Status.data, 'LWOTargetTemperatureUnit');
+      if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits).value !== tempDisplayUnits) {
+        this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits, tempDisplayUnits);
+      }
+      if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentTemperature).value !== this.ovenCurrentTemperature()) {
+        this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.CurrentTemperature, this.ovenCurrentTemperature());
+      }
+      if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.TargetTemperature).value !== this.ovenTargetTemperature()) {
+        this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.TargetTemperature, this.ovenTargetTemperature());
+      }
+      if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState).value !== this.targetHeatingState()) {
+        this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState, this.targetHeatingState());
+      }
+      if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState).value !== this.currentHeatingState()) {
+        this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState, this.currentHeatingState());
+      }
+      if (this.ovenTempControl.getCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity).value !== this.localHumidity) {
+        this.ovenTempControl.updateCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity, this.localHumidity);
       }
       const microwavePowerLevel = microwavePowerPercent(this.Status.data);
       const microwavePowerOn = microwavePowerLevel > 0;
