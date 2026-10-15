@@ -4,7 +4,7 @@ import Microwave from './Microwave.js';
 import { AccessoryContext } from '../baseDevice.js';
 import { LGThinQHomebridgePlatform } from '../platform.js';
 import { Device, DeviceData } from '../lib/Device.js';
-import { createFakeAccessory, FakeService } from './testSupport/fakeHap.js';
+import { CHARACTERISTIC, createFakeAccessory, FakeService, SERVICE } from './testSupport/fakeHap.js';
 
 /**
  * Regression tests for the microwave's combined vent+lamp command, each
@@ -13,51 +13,10 @@ import { createFakeAccessory, FakeService } from './testSupport/fakeHap.js';
  * file's companion methods (sendLightVentCommand, enterVentLamp*,
  * exitVentLampCooldown, updateAccessoryCharacteristic) for the incidents.
  *
- * Characteristic references are plain strings (see CHARACTERISTIC below),
+ * Characteristic references are plain strings (see CHARACTERISTIC in testSupport/fakeHap.ts),
  * matched against FakeService's string-keyed lookup -- there is no real HAP
  * here, so this never talks to an actual Fanv2/Lightbulb service.
  */
-
-const CHARACTERISTIC = {
-  Active: 'Active',
-  ActiveIdentifier: 'ActiveIdentifier',
-  Brightness: 'Brightness',
-  ConfiguredName: 'ConfiguredName',
-  CurrentHeatingCoolingState: 'CurrentHeatingCoolingState',
-  CurrentRelativeHumidity: 'CurrentRelativeHumidity',
-  CurrentTemperature: 'CurrentTemperature',
-  CurrentVisibilityState: { SHOWN: 'SHOWN', HIDDEN: 'HIDDEN' },
-  Identifier: 'Identifier',
-  InputSourceType: { APPLICATION: 'APPLICATION' },
-  InUse: { IN_USE: 'IN_USE', NOT_IN_USE: 'NOT_IN_USE' },
-  IsConfigured: { CONFIGURED: 'CONFIGURED' },
-  Manufacturer: 'Manufacturer',
-  Model: 'Model',
-  Name: 'Name',
-  On: 'On',
-  RemainingDuration: 'RemainingDuration',
-  RotationSpeed: 'RotationSpeed',
-  SerialNumber: 'SerialNumber',
-  SetDuration: 'SetDuration',
-  SleepDiscoveryMode: { ALWAYS_DISCOVERABLE: 'ALWAYS_DISCOVERABLE' },
-  StatusFault: 'StatusFault',
-  TargetHeatingCoolingState: { OFF: 'OFF', HEAT: 'HEAT' },
-  TargetTemperature: 'TargetTemperature',
-  TargetVisibilityState: { SHOWN: 'SHOWN', HIDDEN: 'HIDDEN' },
-  TemperatureDisplayUnits: 'TemperatureDisplayUnits',
-  ValveType: { IRRIGATION: 'IRRIGATION' },
-} as const;
-
-const SERVICE = {
-  AccessoryInformation: 'AccessoryInformation',
-  Fanv2: 'Fanv2',
-  InputSource: 'InputSource',
-  Lightbulb: 'Lightbulb',
-  Switch: 'Switch',
-  Television: 'Television',
-  Thermostat: 'Thermostat',
-  Valve: 'Valve',
-} as const;
 
 /** A baseline snapshot shaped like the real ones captured from the device
  * tonight (trimmed to the fields this file actually reads). */
